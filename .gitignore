@@ -1,0 +1,33 @@
+# Ignore Python bytecode files
+__pycache__/
+*.py[cod]
+
+# Ignore virtual environment directories
+venv/
+.env/
+
+# Ignore test coverage reports
+.coverage
+*.cover
+coverage.xml
+
+# Ignore logs
+*.log
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore Streamlit cache and temporary files
+.streamlit/
+
+# Ignore environment files
+.env
+.env.*
+
+# Ignore IDE specific files
+.vscode/
+.idea/
