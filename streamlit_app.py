@@ -1,9 +1,11 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from pymongo import MongoClient
 from datetime import datetime, UTC, timedelta
 from google import genai
 import urllib.parse
 from streamlit.runtime.caching import cache_data
+import pytz
 
 encoded_username = st.secrets.mongodb.username
 encoded_password = urllib.parse.quote_plus(st.secrets.mongodb.password)
@@ -44,18 +46,50 @@ def generate_mystery():
         }
     return None
 
+def get_user_timezone():
+    """Get user's local timezone."""
+    if 'timezone' not in st.session_state:
+        # Default to UTC if timezone not set
+        st.session_state.timezone = pytz.UTC
+        
+        # Create an invisible component for timezone detection with zero layout impact
+        components.html(
+            """
+            <script>
+                (() => {
+                    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    window.parent.postMessage({tzinfo: timezone}, '*');
+                })();
+            </script>
+            """,
+            height=0,
+            width=0
+        )
+            
+    return st.session_state.timezone
+
+def convert_to_local_date(utc_date_str):
+    """Convert UTC date string to local date string."""
+    utc_date = datetime.strptime(utc_date_str, "%Y-%m-%d")
+    local_date = utc_date.replace(tzinfo=pytz.UTC).astimezone(get_user_timezone())
+    return local_date.strftime("%Y-%m-%d")
+
 @cache_data
 def get_daily_mystery():
     """Check if today's mystery exists in MongoDB; if not, generate and save it."""
-    today = datetime.now(UTC).strftime("%Y-%m-%d")  # Updated to use timezone-aware datetime
-    existing_mystery = collection.find_one({"date": today})
+    # Get UTC date for database query
+    utc_today = datetime.now(UTC).strftime("%Y-%m-%d")
+    existing_mystery = collection.find_one({"date": utc_today})
 
     if existing_mystery:
-        return existing_mystery  # Return the stored mystery
+        # Convert date to local timezone for display
+        existing_mystery['display_date'] = convert_to_local_date(existing_mystery['date'])
+        return existing_mystery
 
     new_mystery = generate_mystery()
     if new_mystery:
-        collection.insert_one(new_mystery)  # Save new mystery to the database
+        collection.insert_one(new_mystery)
+        new_mystery['display_date'] = convert_to_local_date(new_mystery['date'])
         return new_mystery
     return None
 
@@ -65,17 +99,19 @@ def get_weekly_mysteries():
     end_date = datetime.now(UTC)
     start_date = end_date - timedelta(days=7)
     
-    # Convert dates to string format used in database
     end_date_str = end_date.strftime("%Y-%m-%d")
     start_date_str = start_date.strftime("%Y-%m-%d")
     
-    # Query for mysteries within date range
     weekly_mysteries = list(collection.find({
         "date": {
             "$gte": start_date_str,
             "$lte": end_date_str
         }
-    }).sort("date", -1))  # Sort by date descending
+    }).sort("date", -1))
+    
+    # Convert dates to local timezone for display
+    for mystery in weekly_mysteries:
+        mystery['display_date'] = convert_to_local_date(mystery['date'])
     
     return weekly_mysteries
 
@@ -95,10 +131,29 @@ def main():
             header[data-testid="stHeader"] {
                 display: none;
             }
+            .current-date {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                padding: 5px 10px;
+                background-color: #f0f2f6;
+                border-radius: 5px;
+                font-size: 0.9em;
+            }
         </style>
     """, unsafe_allow_html=True)
     
+    # Display current date in local timezone
+    local_now = datetime.now(get_user_timezone())
+    st.markdown(
+        f'<div class="current-date">{local_now.strftime("%B %d, %Y")}</div>',
+        unsafe_allow_html=True
+    )
+    
     st.title("📅 Daily Mystery Challenge")
+    
+    # Initialize timezone detection
+    timezone = get_user_timezone()
     
     # Initialize session state variables
     if 'mystery' not in st.session_state:
@@ -123,6 +178,8 @@ def main():
         st.session_state.current_mystery_id = 'daily'
         # Display the mystery
         st.write(f"{st.session_state.mystery['mystery']}")
+        # Show local date
+        st.caption(f"Mystery for {st.session_state.mystery['display_date']}")
 
         # Toggle answer button for daily view
         st.button(
@@ -147,7 +204,7 @@ def main():
             mystery_id = str(mystery['_id'])
             st.session_state.current_mystery_id = mystery_id
             
-            with st.expander(f"Mystery for {mystery['date']}", expanded=(idx == 0)):
+            with st.expander(f"Mystery for {mystery['display_date']}", expanded=(idx == 0)):
                 st.write(mystery['mystery'])
                 
                 # Toggle answer button for each mystery
