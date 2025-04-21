@@ -3,6 +3,7 @@ from pymongo import MongoClient
 from datetime import datetime, UTC, timedelta
 from google import genai
 import urllib.parse
+from streamlit.runtime.caching import cache_data
 
 encoded_username = st.secrets.mongodb.username
 encoded_password = urllib.parse.quote_plus(st.secrets.mongodb.password)
@@ -43,6 +44,7 @@ def generate_mystery():
         }
     return None
 
+@cache_data
 def get_daily_mystery():
     """Check if today's mystery exists in MongoDB; if not, generate and save it."""
     today = datetime.now(UTC).strftime("%Y-%m-%d")  # Updated to use timezone-aware datetime
@@ -57,6 +59,7 @@ def get_daily_mystery():
         return new_mystery
     return None
 
+@cache_data
 def get_weekly_mysteries():
     """Retrieve mysteries from the last 7 days."""
     end_date = datetime.now(UTC)
